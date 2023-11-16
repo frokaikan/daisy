@@ -3,9 +3,16 @@
 
 # download & checkout
 git clone https://gitlab.freedesktop.org/freetype/freetype.git
+cd freetype
 git checkout 1e2eb65048f75c64b68708efed6ce904c31f3b2f
+git restore .
 
-# paste __TDDCaseConfig to .
+# cd to driver building directory
+mkdir DriverBuilder
+cd DriverBuilder
+
+# set environment by
+python $TDD/set.py normal
 
 # compile & get declarations
 cmake .. -GNinja
@@ -28,6 +35,21 @@ python $TDD/TDD_DriverGenerator.py
 # fix errors & memory leaks
 patch __TDDDriver.cc freetype.diff
 
-# compile (build with asan) & run
+# cd to fuzzing directory
+cd ..
+mkdir Fuzzing
+cd Fuzzing
+
+# set environment by
+python $TDD/set.py fuzzing
+
+# compile & fuzz
+cmake .. -GNinja
+ninja
+cp ../DriverBuilder/__TDDDriver.cc .
 $LLVM_DIR/build_release/bin/clang++ -gdwarf-4 -fstandalone-debug -O0 -DNDEBUG -Xclang -disable-O0-optnone -fPIC -fsanitize=address,fuzzer -fprofile-instr-generate -fcoverage-mapping -std=c++17 -o __TDDDriver.exe __TDDDriver.cc -I ../include -I ../include/freetype libfreetype.a -lz -lbz2 -lpng -lbrotlidec
 ./__TDDDriver.exe
+
+# show crash
+cp $TDD/freetype/crash-* .
+./__TDDDriver.exe crash-*
