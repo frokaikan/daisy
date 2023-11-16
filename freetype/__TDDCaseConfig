@@ -1,0 +1,28 @@
+$ target
+../src/base
+../include
+
+$ case
+./ftsample.c=
+./test_afm.c
+
+$ pre operations
+extern "C" {
+#include "ft2build.h"
+#include "freetype.h"
+#include "ftadvanc.h"
+#include "internal/ftobjs.h"
+#include "internal/ftstream.h"
+}
+
+$ flags
+-I ../include
+-I ../include/freetype
+libfreetype.a
+-lz
+-lbz2
+-lpng
+-lbrotlidec
+
+$ no const int
+1

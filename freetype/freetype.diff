@@ -1,0 +1,26 @@
+380a381,386
+>         __TDD_driver_register_free([=] () -> bool {
+>             if (!__TDD_driver_get_ptr<FT_Library>(1)) return false;
+>             FT_Library __TDD_tempVar_0 = static_cast<FT_Library>(__TDD_driver_get_typed_object<FT_Library>(1));
+>             FT_Done_FreeType(__TDD_tempVar_0);
+>             return true;
+>         });
+426a433
+>         /*
+429a437
+>         */
+436a445,450
+>         __TDD_driver_register_free([=] () -> bool {
+>             if (!__TDD_driver_get_ptr<FT_Stream>(4)) return false;
+>             FT_Stream __TDD_tempVar_0 = static_cast<FT_Stream>(__TDD_driver_get_typed_object<FT_Stream>(4));
+>             FT_Stream_Close(__TDD_tempVar_0);
+>             return true;
+>         });
+444c458
+<         void* __TDD_tempVar_2 = FT_Get_Module_Interface(__TDD_tempVar_0, __TDD_tempVar_1);
+---
+>         void* __TDD_tempVar_2 = const_cast<void*>(FT_Get_Module_Interface(__TDD_tempVar_0, __TDD_tempVar_1));
+456a471
+>         /*
+459a475
+>         */
