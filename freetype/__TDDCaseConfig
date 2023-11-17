@@ -3,7 +3,7 @@ $ target
 ../include
 
 $ case
-./ftsample.c=
+./ftsample.c
 ./test_afm.c
 
 $ pre operations

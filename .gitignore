@@ -2,3 +2,4 @@
 suite*
 .vscode/
 TDD_GraphAnalyze.py
+_tmp.sh

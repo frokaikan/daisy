@@ -405,6 +405,9 @@ int __TDD_driver_main () {
         if (!__TDD_driver_get_ptr<magic_set*>(0)) return false;
         magic_set* __TDD_tempVar_0 = static_cast<magic_set*>(__TDD_driver_get_typed_object<magic_set*>(0));
         char* __TDD_tempVar_1 = static_cast<char*>(__TDD_driver_file_name());
+        char* __TDD_tempVar_2 = const_cast<char*>(magic_file(__TDD_tempVar_0, __TDD_tempVar_1));
+        if (!__TDD_tempVar_2) return false;
+        __TDD_driver_set_ptr<char*>(4, __TDD_tempVar_2);
         return true;
     });
     nodes.push_back([&] () -> bool {

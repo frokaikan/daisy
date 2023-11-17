@@ -2,11 +2,11 @@
 <         char* __TDD_tempVar_1 = static_cast<char*>(__TDD_driver_get_typed_object<char*>(1));
 ---
 >         char* __TDD_tempVar_1 = static_cast<char*>(__TDD_driver_file_name());
-408,410d407
+408c408
 <         char* __TDD_tempVar_2 = magic_file(__TDD_tempVar_0, __TDD_tempVar_1);
-<         if (!__TDD_tempVar_2) return false;
-<         __TDD_driver_set_ptr<char*>(4, __TDD_tempVar_2);
-433c430
+---
+>         char* __TDD_tempVar_2 = const_cast<char*>(magic_file(__TDD_tempVar_0, __TDD_tempVar_1));
+433c433
 < #endif // __TDD_DRIVER
 \ No newline at end of file
 ---
