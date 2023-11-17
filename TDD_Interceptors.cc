@@ -167,7 +167,7 @@ nlohmann::json getSimplifiedTrace () {
 extern "C" {
 
 void* malloc (size_t size) {
-    GET_SYSTEM_FUNCTION(malloc);
+    GET_SYSTEM_FUNCTION (malloc);
     void* ret = sys_malloc(size);
     if (ifTrack) {
         ifTrack = false;
@@ -179,7 +179,7 @@ void* malloc (size_t size) {
 }
 
 void free (void* ptr) {
-    GET_SYSTEM_FUNCTION(free);
+    GET_SYSTEM_FUNCTION (free);
     if (ifTrack) {
         ifTrack = false;
         buffers.erase(ptr);
@@ -214,7 +214,7 @@ int open (const char *path, int flags, ...) {
 
 void TDD_endCase();
 void exit (int code) {
-    GET_SYSTEM_FUNCTION(exit);
+    GET_SYSTEM_FUNCTION (exit);
     if (ifTrack) {
         TDD_endCase();
     }
