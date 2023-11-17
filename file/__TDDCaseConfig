@@ -1,2 +1,18 @@
 $ target
 ../../src
+!../../src/file.c
+
+$ case
+../../src/file.c
+
+$ pre operations
+extern "C" {
+#include "file.h"
+#include "magic.h"
+}
+
+$ flags
+-DHAVE_STRCASESTR
+-I ../../src
+-I .
+./.libs/libmagic.so

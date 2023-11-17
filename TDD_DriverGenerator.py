@@ -244,7 +244,7 @@ class FunctionDecl:
 
         self._isCXXMethod = d["isCXXMethod"]
         if self._isCXXMethod:
-            self._isStaticMethod = d["isStatic"]
+            self._isStaticMethod = d["isStaticMethod"]
             if self._isStaticMethod:
                 self._name = name
             else:

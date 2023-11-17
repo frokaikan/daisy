@@ -296,7 +296,7 @@ void TDD_traceReturnValue (const void* ptr) {
 }
 
 void TDD_traceCallPost (const char* demangledFunctionName) {
-    if (!currentFunction.empty() && currentFunction == demangledFunctionName) {
+    if (!currentFunction.empty() && currentFunction == getInterestingName(demangledFunctionName)) {
         nlohmann::json result = nlohmann::json::object();
         result["type"] = "CALL";
         result["name"] = currentFunction;
