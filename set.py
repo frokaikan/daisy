@@ -63,7 +63,7 @@ elif len(sys.argv) == 2 and sys.argv[1] == "showEnv":
 TDD_DUMP_DECL (suite - instrument)
 TDD_GET_DEP (suite - instrument)
 TDD_CASE (case - instrument)
-TDD_SUITE_CASE (suite case - execute)
+TDD_NO_CHAIN (case - execute)
 $ target (target files)
 $ case (case files)
 $ pre operations

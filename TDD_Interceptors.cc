@@ -12,10 +12,32 @@
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 #define ASSERT(x, info) if (!x) {std::cerr << info << " !!\n"; abort();} void(0)
-#define GET_SYSTEM_FUNCTION(funcName) static decltype(funcName)* sys_##funcName = nullptr; if (UNLIKELY(!sys_##funcName)) {sys_##funcName = reinterpret_cast<decltype(funcName)*>(dlsym(RTLD_NEXT, #funcName));} void(0)
 #define UNEG1 static_cast<uint64_t>(-1)
 
 namespace {
+
+bool checkEnv (const char* env) {
+    const char* envValue = getenv(env);
+    if (envValue && envValue[0] == '1') {return true;}
+    else {return false;}
+}
+
+decltype(malloc)* sys_malloc = nullptr;
+decltype(free)*   sys_free   = nullptr;
+decltype(open)*   sys_open   = nullptr;
+decltype(exit)*   sys_exit   = nullptr;
+
+__attribute__((constructor))
+void hook_init () {
+    static bool hasValue = false;
+    if (UNLIKELY(!hasValue)) {
+        hasValue = true;
+        sys_malloc = reinterpret_cast<decltype(malloc)*>(dlsym(RTLD_NEXT, "malloc"));
+        sys_free   = reinterpret_cast<decltype(free)*>  (dlsym(RTLD_NEXT, "free"));
+        sys_open   = reinterpret_cast<decltype(open)*>  (dlsym(RTLD_NEXT, "open"));
+        sys_exit   = reinterpret_cast<decltype(exit)*>  (dlsym(RTLD_NEXT, "exit"));
+    }
+}
 
 bool ifTrack = false;
 
@@ -167,7 +189,7 @@ nlohmann::json getSimplifiedTrace () {
 extern "C" {
 
 void* malloc (size_t size) {
-    GET_SYSTEM_FUNCTION (malloc);
+    hook_init();
     void* ret = sys_malloc(size);
     if (ifTrack) {
         ifTrack = false;
@@ -179,7 +201,7 @@ void* malloc (size_t size) {
 }
 
 void free (void* ptr) {
-    GET_SYSTEM_FUNCTION (free);
+    hook_init();
     if (ifTrack) {
         ifTrack = false;
         buffers.erase(ptr);
@@ -189,7 +211,7 @@ void free (void* ptr) {
 }
 
 int open (const char *path, int flags, ...) {
-    GET_SYSTEM_FUNCTION (open);
+    hook_init();
     int ret;
     if (__OPEN_NEEDS_MODE (flags)) {
         va_list list;
@@ -214,7 +236,7 @@ int open (const char *path, int flags, ...) {
 
 void TDD_endCase();
 void exit (int code) {
-    GET_SYSTEM_FUNCTION (exit);
+    hook_init();
     if (ifTrack) {
         TDD_endCase();
     }
@@ -392,10 +414,12 @@ void TDD_startCase () {
 
 void TDD_endCase () {
     ifTrack = false;
-    getSimplifiedTrace();
-    std::ofstream os;
-    os.open("__TDDCallingChain.json");
-    os << getSimplifiedTrace().dump(4);
+    if (!checkEnv("TDD_NO_CHAIN")) {
+        getSimplifiedTrace();
+        std::ofstream os;
+        os.open("__TDDCallingChain.json");
+        os << getSimplifiedTrace().dump(4);
+    }
 }
 
 } // extern "C"

@@ -318,13 +318,14 @@ public:
 class TDDConsumer : public clang::ASTConsumer {
 public:
     void HandleTranslationUnit (clang::ASTContext &ctx) override {
-        clang::TranslationUnitDecl& unit = *ctx.getTranslationUnitDecl();
-        if (checkEnv("TDD_DUMP_DECL")) {
+        if (checkEnv("TDD_DUMP_DECL") && isInterestingFile(ctx.getSourceManager().getFileEntryForID(ctx.getSourceManager().getMainFileID())->getName())) {
+            clang::TranslationUnitDecl& unit = *ctx.getTranslationUnitDecl();
             DeclVisitor v(ctx);
             v.TraverseDecl(&unit);
             openAndUpdate("__TDDDeclarations.json", v.getInfo());
         }
-        if (checkEnv("TDD_GET_DEP")) {
+        if (checkEnv("TDD_GET_DEP") && isInterestingFile(ctx.getSourceManager().getFileEntryForID(ctx.getSourceManager().getMainFileID())->getName())) {
+            clang::TranslationUnitDecl& unit = *ctx.getTranslationUnitDecl();
             DepVisitor v(ctx);
             v.TraverseDecl(&unit);
             openAndUpdate("__TDDAnalysis.json", v.getInfo());

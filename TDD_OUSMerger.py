@@ -143,7 +143,6 @@ def interCallMatch(call1 : FunctionCall, call2 : FunctionCall, ptrIdxMap : Dict[
     ptrIdxMap.update(tempPtrIdxMap)
     return True
 
-# TODO : manipulate loads
 class Graph:
     __slots__ = ("_nodes", "_loadPtrs", "_edges", "_reachables", "_nodeCount", "_nextPtrIdx")
     _nodes : List[FunctionCall]

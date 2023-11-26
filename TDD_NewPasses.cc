@@ -76,6 +76,9 @@ bool isInterestingCaseFile (llvm::StringRef fileName) {
                 }
             } else if (addCase) {
                 std::vector<llvm::SmallString<32>>* thisVec = nullptr;
+                if (lineRef.endswith(" 1")) {
+                    lineRef = lineRef.drop_back(2);
+                }
                 if (lineRef.startswith("!")) {
                     lineRef = lineRef.drop_front();
                     thisVec = &casePathVecNot;
