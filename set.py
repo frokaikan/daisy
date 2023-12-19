@@ -71,6 +71,7 @@ $ flags
 $ min size
 $ max size
 $ no const int
+$ opaque types
 """
 else:
     raise ValueError(f"Usage : eval $(python {sys.argv[0]} normal | fuzzing | unset | fullUnset | compile | showEnv)")

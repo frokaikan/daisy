@@ -7,19 +7,21 @@ import sys
 from typing import DefaultDict, Dict, List, Set, Tuple, Union
 
 class ObjectLoad:
-    __slots__ = ("_address", "_value")
+    __slots__ = ("_address", "_offset", "_value")
     _address : int
     _value : int
 
     def __init__(self, loadDict : Dict):
         assert loadDict["type"] == "LOAD"
         self._address = loadDict["address"]
+        self._offset = loadDict["offset"]
         self._value = loadDict["value"]
 
     def dump(self) -> Dict:
         return {
             "type" : "LOAD",
             "address" : self._address,
+            "offset" : self._offset,
             "value" : self._value
         }
 
@@ -33,11 +35,12 @@ class FunctionCall:
         FUNC      = enum.auto()
 
     class FunctionParameter:
-        __slots__ = ("_idx", "_paramType", "_value", "_ptrIndex", "_name")
+        __slots__ = ("_idx", "_paramType", "_value", "_ptrIndex", "_offset", "_name")
         _idx : int
         _paramType : "FunctionCall.FunctionParameterType"
         _value : int
         _ptrIndex : int
+        _offset : int
         _name : str
 
         def __init__(self, parameterDict : Dict):
@@ -47,6 +50,7 @@ class FunctionCall:
                 self._value = parameterDict["value"]
             elif self._paramType == FunctionCall.FunctionParameterType.PTR:
                 self._ptrIndex = parameterDict["ptrIndex"]
+                self._offset = parameterDict["offset"]
             elif self._paramType == FunctionCall.FunctionParameterType.FUNC:
                 self._name = parameterDict["name"]
 
@@ -59,6 +63,7 @@ class FunctionCall:
                 dic["value"] = self._value
             elif self._paramType == FunctionCall.FunctionParameterType.PTR:
                 dic["ptrIndex"] = self._ptrIndex
+                dic["offset"] = self._offset
             elif self._paramType == FunctionCall.FunctionParameterType.FUNC:
                 dic["name"] = self._name
             return dic
@@ -103,7 +108,7 @@ def intraCallMatch(call1 : FunctionCall, call2 : FunctionCall) -> bool:
             return False
         if param1._paramType == FunctionCall.FunctionParameterType.CONST and param1._value != param2._value:
             return False
-        elif param1._paramType == FunctionCall.FunctionParameterType.PTR and param1._ptrIndex != param2._ptrIndex:
+        elif param1._paramType == FunctionCall.FunctionParameterType.PTR and (param1._offset != param2._offset or param1._ptrIndex != param2._ptrIndex):
             return False
         elif param1._paramType == FunctionCall.FunctionParameterType.FUNC and param1._name != param2._name:
             return False
@@ -135,7 +140,7 @@ def interCallMatch(call1 : FunctionCall, call2 : FunctionCall, ptrIdxMap : Dict[
             return False
         if param1._paramType == FunctionCall.FunctionParameterType.CONST and param1._value != param2._value:
             return False
-        elif param1._paramType == FunctionCall.FunctionParameterType.PTR and not ptrIdxMatch(param1._ptrIndex, param2._ptrIndex):
+        elif param1._paramType == FunctionCall.FunctionParameterType.PTR and (param1._offset != param2._offset or not ptrIdxMatch(param1._ptrIndex, param2._ptrIndex)):
             return False
         elif param1._paramType == FunctionCall.FunctionParameterType.FUNC and param1._name != param2._name:
             return False
@@ -146,7 +151,7 @@ def interCallMatch(call1 : FunctionCall, call2 : FunctionCall, ptrIdxMap : Dict[
 class Graph:
     __slots__ = ("_nodes", "_loadPtrs", "_edges", "_reachables", "_nodeCount", "_nextPtrIdx")
     _nodes : List[FunctionCall]
-    _loadPtrs : Dict[int, int]
+    _loadPtrs : Dict[Tuple[int, int], int]
     _edges : List[Tuple[int, int]]
     _reachables : DefaultDict[int, List[int]]
     _nodeCount : int
@@ -191,11 +196,12 @@ class Graph:
         return self._nodeCount - 1
 
     def addLoadNode(self, objectLoad : ObjectLoad, loadMap : Dict[int, int]):
-        if objectLoad._address in self._loadPtrs:
-            if objectLoad._value != self._loadPtrs[objectLoad._address]:
-                loadMap[objectLoad._value] = self._loadPtrs[objectLoad._address]
+        key = (objectLoad._address, objectLoad._offset)
+        if key in self._loadPtrs:
+            if objectLoad._value != self._loadPtrs[key]:
+                loadMap[objectLoad._value] = self._loadPtrs[key]
         else:
-            self._loadPtrs[objectLoad._address] = objectLoad._value
+            self._loadPtrs[key] = objectLoad._value
 
     def loadOUS(self, OUS : List[Union[FunctionCall, ObjectLoad]]):
         lastNodeIdx = 0
@@ -232,10 +238,11 @@ class Graph:
     def addLoadNodeFromAnotherOUS(self, objectLoad : ObjectLoad, ptrMap : Dict[int, int]):
         assert objectLoad._value not in ptrMap
         mappedAddress = self.getNewIdx(objectLoad._address, ptrMap)
-        if mappedAddress in self._loadPtrs:
-            ptrMap[objectLoad._value] = self._loadPtrs[mappedAddress]
+        key = (mappedAddress, objectLoad._offset)
+        if key in self._loadPtrs:
+            ptrMap[objectLoad._value] = self._loadPtrs[key]
         else:
-            self._loadPtrs[mappedAddress] = self.getNewIdx(objectLoad._value, ptrMap)
+            self._loadPtrs[key] = self.getNewIdx(objectLoad._value, ptrMap)
 
     def loadAnotherOUS(self, OUS : List[Union[FunctionCall, ObjectLoad]]):
         lastNodeIdx = 0

@@ -6,7 +6,7 @@ from typing import List, Tuple
 
 class GlobalConfig:
     # configs
-    COMPILE_FLAGS : str = "-gdwarf-4 -fstandalone-debug -O0 -DNDEBUG -Xclang -disable-O0-optnone -fPIC -std=c++17 -DNDEBUG -fpass-plugin=$TDD/TDD_NewPasses.so"
+    COMPILE_FLAGS : str = "-gdwarf-4 -fstandalone-debug -O0 -DNDEBUG -Xclang -disable-O0-optnone -fPIC -DNDEBUG -fpass-plugin=$TDD/TDD_NewPasses.so"
     # args
     CASES : Tuple[Tuple[str, bool]] = ()
     FLAGS : str                     = ""
@@ -61,10 +61,22 @@ if __name__ == "__main__":
     readConfigFile()
     for case in GlobalConfig.CASES:
         if case[1]:
-            flags = f"{GlobalConfig.FLAGS} -fsanitize=fuzzer"
-            output = f"{case[0]}.fuzzer.exe"
+            if case[0].endswith(".c"):
+                compiler = f"$LLVM_DIR/build_release/bin/clang"
+                flags = f"{GlobalConfig.FLAGS} -fsanitize=fuzzer"
+                output = f"{case[0]}.fuzzer.exe"
+            else:
+                compiler = f"$LLVM_DIR/build_release/bin/clang++"
+                flags = f"{GlobalConfig.FLAGS} -std=c++17 -fsanitize=fuzzer"
+                output = f"{case[0]}.fuzzer.exe"
         else:
-            flags = GlobalConfig.FLAGS.strip()
-            output = f"{case[0]}.exe"
-        cmd = f"TDD_CASE=1 $LLVM_DIR/build_release/bin/clang++ {GlobalConfig.COMPILE_FLAGS} {case[0]} -o {output} {flags} $TDD/TDD_Interceptors.so"
+            if case[0].endswith(".c"):
+                compiler = f"$LLVM_DIR/build_release/bin/clang"
+                flags = GlobalConfig.FLAGS.strip()
+                output = f"{case[0]}.exe"
+            else:
+                compiler = f"$LLVM_DIR/build_release/bin/clang++"
+                flags = f"{GlobalConfig.FLAGS.strip()} -std=c++17"
+                output = f"{case[0]}.exe"
+        cmd = f"TDD_CASE=1 {compiler} {GlobalConfig.COMPILE_FLAGS} {case[0]} -o {output} {flags} $TDD/TDD_Interceptors.so"
         assert runCommand(cmd) == 0

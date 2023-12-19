@@ -25,7 +25,7 @@
 
 #define __TDD_ERROR_EXIT_CODE 110
 #define __TDD_OBJECT_CREATE_FAIL 120
-#define __TDD_UNEG1 static_cast<uint64_t>(-1)
+#define __TDD_UNEG1 (uint64_t) (-1)
 #define __TDD_DEBUG__ 1
 #if (defined (__TDD_DEBUG__) && __TDD_DEBUG__)
 #define __TDD_ASSERT(cond, msg) \
@@ -45,6 +45,8 @@
 
 // @@ PRE OPERATIONS @@
 
+// @@ OPAQUE TYPES @@
+
 namespace TDD {
 
 const uint8_t* __TDD_global_begin  = nullptr;
@@ -56,11 +58,11 @@ std::vector<std::function<void ()>> __TDD_funcitons_run_on_exit;
 uint64_t __TDD_file_count = 0;
 std::vector<void*> __TDD_ptr;
 std::vector<uint64_t> __TDD_ptr_size;
-std::map<uint64_t, uint64_t> __TDD_load_ptr;
+std::map<uint64_t, std::pair<uint64_t, uint64_t>> __TDD_load_ptr;
 
 void __TDD_driver_save_to_file (char* fileName, const void* data, size_t size) {
     if (size == 0) {
-        size = strlen(static_cast<const char*>(data));
+        size = strlen((const char*) (data));
     }
     FILE* file = fopen(fileName, "w");
     fwrite(data, size, 1, file);
@@ -69,7 +71,7 @@ void __TDD_driver_save_to_file (char* fileName, const void* data, size_t size) {
 
 void __TDD_driver_save_to_file_append (char* fileName, const void* data, size_t size) {
     if (size == 0) {
-        size = strlen(static_cast<const char*>(data));
+        size = strlen((const char*) (data));
     }
     FILE* file = fopen(fileName, "a");
     fwrite(data, size, 1, file);
@@ -109,7 +111,7 @@ uint64_t __TDD_driver_size () {
 }
 
 void* __TDD_driver_alloc (uint64_t size, bool allZero = true) {
-    uint8_t* ret = static_cast<uint8_t*>(malloc(size));
+    uint8_t* ret = (uint8_t*) (malloc(size));
     if (!allZero) {
         for (uint64_t i = 0; i < size; ++i) {
             ret[i] = __TDD_driver_next();
@@ -124,7 +126,7 @@ void* __TDD_driver_alloc (uint64_t size, bool allZero = true) {
 void* __TDD_driver_string (uint64_t& size) {
     uint8_t* ret;
     size = __TDD_driver_size();
-    ret = static_cast<uint8_t*>(malloc(size + 1));
+    ret = (uint8_t*) (malloc(size + 1));
     for (uint64_t i = 0; i < size; ++i) {
         ret[i] = __TDD_driver_next();
     }
@@ -135,9 +137,7 @@ void* __TDD_driver_string (uint64_t& size) {
 
 template <typename T>
 void* __TDD_driver_typed_alloc (uint64_t& size) {
-    if (std::is_same_v<T, void*> || std::is_same_v<T, const void*>) {
-        return __TDD_driver_string(size);
-    } else if (std::is_reference_v<T>) {
+    if (std::is_reference_v<T>) {
         size = sizeof (std::remove_reference_t<T>);
     } else if (std::is_pointer_v<T>) {
         size = sizeof (std::remove_pointer_t<T>);
@@ -151,15 +151,26 @@ void* __TDD_driver_typed_alloc (uint64_t& size) {
     }
 }
 
+template <>
+void* __TDD_driver_typed_alloc<void*> (uint64_t& size) {
+    return __TDD_driver_string(size);
+}
+
+template <>
+void* __TDD_driver_typed_alloc<const void*> (uint64_t& size) {
+    return __TDD_driver_string(size);
+}
+
 template <typename T>
 bool __TDD_driver_get_ptr (uint64_t idx) {
     if (__TDD_ptr.at(idx)) {
         return true;
     }
-    std::vector<std::pair<uint64_t, uint64_t>> loadChain;
+    std::vector<std::pair<uint64_t, std::pair<uint64_t, uint64_t>>> loadChain;
     for (uint64_t dst = idx; __TDD_load_ptr.count(dst); ) {
-        uint64_t src = __TDD_load_ptr.at(dst);
-        loadChain.push_back({dst, src});
+        std::pair<uint64_t, uint64_t> srcPair = __TDD_load_ptr.at(dst);
+        uint64_t src = srcPair.first, offset = srcPair.second;
+        loadChain.push_back({dst, {src, offset}});
         if (__TDD_ptr[src]) {
             break;
         } else {
@@ -168,13 +179,13 @@ bool __TDD_driver_get_ptr (uint64_t idx) {
     }
     if (!loadChain.empty()) {
         while (!loadChain.empty()) {
-            std::pair<uint64_t, uint64_t> loadPair = loadChain.back();
-            uint64_t dst = loadPair.first, src = loadPair.second;
+            std::pair<uint64_t, std::pair<uint64_t, uint64_t>> loadPair = loadChain.back();
+            uint64_t dst = loadPair.first, src = loadPair.second.first, offset = loadPair.second.second;
             loadChain.pop_back();
             if (!__TDD_ptr[src]) {
                 return false;
             } else {
-                __TDD_ptr[dst] = *static_cast<void**>(__TDD_ptr[src]);
+                __TDD_ptr[dst] = *(void**) (((char*) __TDD_ptr[src]) + offset);
                 if (!__TDD_ptr[dst]) {
                     return false;
                 }
@@ -190,24 +201,32 @@ bool __TDD_driver_get_ptr (uint64_t idx) {
 }
 
 template <typename T>
-T __TDD_driver_get_typed_object (uint64_t idx) {
-    if (std::is_same_v<T, void*> || std::is_same_v<T, const void*>) {
-        return static_cast<T>(__TDD_ptr.at(idx));
-    } else if (std::is_reference_v<T>) {
-        return *static_cast<std::add_pointer_t<std::remove_reference_t<T>>>(__TDD_ptr.at(idx));
+T __TDD_driver_get_typed_object (uint64_t idx, int64_t offset) {
+    if (std::is_reference_v<T>) {
+        return *(std::add_pointer_t<std::remove_reference_t<T>>) (((char*) __TDD_ptr.at(idx)) + offset);
     } else if (std::is_pointer_v<T>) {
-        return static_cast<T>(__TDD_ptr.at(idx));
+        return (T) (((char*) __TDD_ptr.at(idx)) + offset);
     } else {
         __TDD_ASSERT (false, "__TDD_driver_get_typed_object without a reference or pointer type");
     }
 }
 
+template <>
+void* __TDD_driver_get_typed_object<void*> (uint64_t idx, int64_t offset) {
+    return (void*) (((char*) __TDD_ptr.at(idx)) + offset);
+}
+
+template <>
+const void* __TDD_driver_get_typed_object<const void*> (uint64_t idx, int64_t offset) {
+    return (void*) (((char*) __TDD_ptr.at(idx)) + offset);
+}
+
 template <typename T>
 T __TDD_driver_get_typed_value () {
     if (std::is_integral_v<T>) {
-        return static_cast<T>(__TDD_driver_integer());
+        return (T) (__TDD_driver_integer());
     } else if (std::is_floating_point_v<T>) {
-        return static_cast<T>(__TDD_driver_floating());
+        return (T) (__TDD_driver_floating());
     } else {
         return {};
     }
@@ -217,14 +236,26 @@ template <typename T>
 void __TDD_driver_set_ptr (uint64_t idx, T value) {
     __TDD_ASSERT (!__TDD_ptr.at(idx), "set on existing ptr");
     if (std::is_same_v<T, void*> || std::is_same_v<T, const void*>) {
-        __TDD_ptr.at(idx) = static_cast<void*>(value);
+        __TDD_ptr.at(idx) = (void*) (value);
     } else if (std::is_reference_v<T>) {
-        __TDD_ptr.at(idx) = static_cast<void*>(&value);
+        __TDD_ptr.at(idx) = (void*) (&value);
     } else if (std::is_pointer_v<T>) {
-        __TDD_ptr.at(idx) = static_cast<void*>(value);
+        __TDD_ptr.at(idx) = (void*) (value);
     } else {
         __TDD_ASSERT (false, "__TDD_driver_set_ptr without a reference or pointer type");
     }
+}
+
+template <>
+void __TDD_driver_set_ptr<void*> (uint64_t idx, void* value) {
+    __TDD_ASSERT (!__TDD_ptr.at(idx), "set on existing ptr");
+    __TDD_ptr.at(idx) = (void*) (value);
+}
+
+template <>
+void __TDD_driver_set_ptr<const void*> (uint64_t idx, const void* value) {
+    __TDD_ASSERT (!__TDD_ptr.at(idx), "set on existing ptr");
+    __TDD_ptr.at(idx) = const_cast<void*>((const void*) (value));
 }
 
 void* __TDD_driver_file_name () {
@@ -232,7 +263,7 @@ void* __TDD_driver_file_name () {
     remove(realFileName.c_str());
     FILE* file = fopen(realFileName.c_str(), "w");
     uint64_t size = __TDD_driver_size();
-    uint8_t* tmp = static_cast<uint8_t*>(malloc(size));
+    uint8_t* tmp = (uint8_t*) (malloc(size));
     for (uint64_t i = 0; i < size; ++i) {
         tmp[i] = __TDD_driver_next();
     }
@@ -242,7 +273,7 @@ void* __TDD_driver_file_name () {
     void* ret = malloc(realFileName.size() + 1);
     __TDD_driver_register_free([=] () {free(ret);});
     memcpy(ret, realFileName.c_str(), realFileName.size());
-    static_cast<char*>(ret)[realFileName.size()] = '\0';
+    ((char*) (ret))[realFileName.size()] = '\0';
     return ret;
 }
 
@@ -257,7 +288,7 @@ std::string __TDD_driver_std_string () {
 }
 
 FILE* __TDD_driver_FILEptr () {
-    char* fileName = static_cast<char*>(__TDD_driver_file_name());
+    char* fileName = (char*) (__TDD_driver_file_name());
     FILE* ret = fopen(fileName, "r+");
     fseek(ret, 0, SEEK_SET);
     __TDD_driver_register_free([=] () {fclose(ret);});

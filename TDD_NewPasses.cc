@@ -19,6 +19,7 @@
 #define ASSERT(cond, msg) if (UNLIKELY (!(cond))) {llvm::errs() << msg << " !! \n"; abort();} void(0)
 #define CAST(type, name, from) type* name = llvm::cast<type>(from)
 #define DYN_CAST(type, name, from) if (type* name = llvm::dyn_cast<type>(from))
+#define WHILE_CAST(type, name, from) while (type* name = llvm::dyn_cast<type>(from))
 #define LIKELY(x) __builtin_expect(!!(x), 1)
 #define UNLIKELY(x) __builtin_expect(!!(x), 0)
 
@@ -188,10 +189,10 @@ void ScanModuleAndInstruct (llvm::Module& M) {
     llvm::IRBuilder builder(M.getContext());
     llvm::FunctionCallee
         TDD_traceAlloca        = M.getOrInsertFunction("TDD_traceAlloca",        builder.getVoidTy(), builder.getPtrTy(), builder.getInt64Ty()),
-        TDD_traceLoad          = M.getOrInsertFunction("TDD_traceLoad",          builder.getVoidTy(), builder.getPtrTy(), builder.getPtrTy()),
+        TDD_traceLoad          = M.getOrInsertFunction("TDD_traceLoad",          builder.getVoidTy(), builder.getPtrTy(), builder.getInt64Ty(), builder.getPtrTy()),
         TDD_traceCallPre       = M.getOrInsertFunction("TDD_traceCallPre",       builder.getVoidTy(), builder.getPtrTy()),
         TDD_traceIntParameter  = M.getOrInsertFunction("TDD_traceIntParameter",  builder.getVoidTy(), builder.getInt64Ty(), builder.getInt64Ty()),
-        TDD_tracePtrParameter  = M.getOrInsertFunction("TDD_tracePtrParameter",  builder.getVoidTy(), builder.getInt64Ty(), builder.getPtrTy()),
+        TDD_tracePtrParameter  = M.getOrInsertFunction("TDD_tracePtrParameter",  builder.getVoidTy(), builder.getInt64Ty(), builder.getPtrTy(), builder.getInt64Ty()),
         TDD_traceFuncParameter = M.getOrInsertFunction("TDD_traceFuncParameter", builder.getVoidTy(), builder.getInt64Ty(), builder.getPtrTy()),
         TDD_traceReturnValue   = M.getOrInsertFunction("TDD_traceReturnValue",   builder.getVoidTy(), builder.getPtrTy()),
         TDD_traceCallPost      = M.getOrInsertFunction("TDD_traceCallPost",      builder.getVoidTy(), builder.getPtrTy()),
@@ -215,9 +216,16 @@ void ScanModuleAndInstruct (llvm::Module& M) {
                         }
                     } else DYN_CAST (llvm::LoadInst, pLoad, &I) {
                         llvm::LoadInst& load = *pLoad;
-                        builder.SetInsertPoint(load.getNextNonDebugInstruction());
                         if (load.getType()->isPointerTy()) {
-                            builder.CreateCall(TDD_traceLoad, {load.getPointerOperand(), &load});
+                            builder.SetInsertPoint(load.getNextNonDebugInstruction());
+                            llvm::Value* pSrc = load.getPointerOperand();
+                            llvm::Value* pOffset = builder.getInt64(0);
+                            WHILE_CAST (llvm::GetElementPtrInst, pGEP, pSrc) {
+                                llvm::Value* pThisOffset = builder.CreateSub(builder.CreatePtrToInt(pGEP, builder.getInt64Ty()), builder.CreatePtrToInt(pGEP->getPointerOperand(), builder.getInt64Ty()));
+                                pSrc = pGEP->getPointerOperand();
+                                pOffset = builder.CreateAdd(pOffset, pThisOffset);
+                            }
+                            builder.CreateCall(TDD_traceLoad, {pSrc, pOffset, pLoad});
                         }
                     } else DYN_CAST (llvm::CallBase, pCall, &I) {
                         llvm::CallBase& call = *pCall;
@@ -237,7 +245,14 @@ void ScanModuleAndInstruct (llvm::Module& M) {
                                         std::string demangledFuncArgName = llvm::demangle(funcArg.getName().str());
                                         builder.CreateCall(TDD_traceFuncParameter, {builder.getInt64(idx), builder.CreateGlobalStringPtr(demangledFuncArgName)});
                                     } else {
-                                        builder.CreateCall(TDD_tracePtrParameter, {builder.getInt64(idx), &arg});
+                                        llvm::Value* pSrc = &arg;
+                                        llvm::Value* pOffset = builder.getInt64(0);
+                                        WHILE_CAST (llvm::GetElementPtrInst, pGEP, pSrc) {
+                                            llvm::Value* pThisOffset = builder.CreateSub(builder.CreatePtrToInt(pGEP, builder.getInt64Ty()), builder.CreatePtrToInt(pGEP->getPointerOperand(), builder.getInt64Ty()));
+                                            pSrc = pGEP->getPointerOperand();
+                                            pOffset = builder.CreateAdd(pOffset, pThisOffset);
+                                        }
+                                        builder.CreateCall(TDD_tracePtrParameter, {builder.getInt64(idx), pSrc, pOffset});
                                     }
                                 }
                             }

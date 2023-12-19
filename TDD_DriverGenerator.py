@@ -35,6 +35,7 @@ class GlobalConfig:
     MIN_SIZE       : int  = 256
     MAX_SIZE       : int  = 4096
     NO_CONST_INT   : bool = False
+    OPAQUE_TYPES   : str  = ""
 
     def __init__(self):
         assert False, "class GlobalConfig can NOT be initialized"
@@ -49,12 +50,14 @@ def readConfigFile(fileName = "__TDDCaseConfig"):
         MODE_MIN_SIZE     = enum.auto()
         MODE_MAX_SIZE     = enum.auto()
         MODE_NO_CONST_INT = enum.auto()
+        MODE_OPAQUE_TYPES = enum.auto()
     mode = Mode.MODE_UNKNOWN
     preOperations = []
     flags = []
     minSize = 256
     maxSize = 4096
     noConstInt = False
+    opaqueTypes = ""
     with open(fileName, "rt") as f:
         for line in f:
             line = line.strip()
@@ -70,6 +73,8 @@ def readConfigFile(fileName = "__TDDCaseConfig"):
                 mode = Mode.MODE_MAX_SIZE
             elif line == "$ no const int":
                 mode = Mode.MODE_NO_CONST_INT
+            elif line == "$ opaque types":
+                mode = Mode.MODE_OPAQUE_TYPES
             elif line.startswith("$"):
                 # other flags
                 mode = Mode.MODE_UNKNOWN
@@ -87,6 +92,8 @@ def readConfigFile(fileName = "__TDDCaseConfig"):
                         noConstInt = True
                     else:
                         noConstInt = False
+                elif mode == Mode.MODE_OPAQUE_TYPES:
+                    opaqueTypes += f"struct {line} {{}};\n"
                 else:
                     # other configs
                     pass
@@ -97,6 +104,7 @@ def readConfigFile(fileName = "__TDDCaseConfig"):
     GlobalConfig.MIN_SIZE = minSize
     GlobalConfig.MAX_SIZE = maxSize
     GlobalConfig.NO_CONST_INT = noConstInt
+    GlobalConfig.OPAQUE_TYPES = opaqueTypes
 
 class CMDFormat:
     """
@@ -318,11 +326,12 @@ class FunctionCall:
         FUNC      = enum.auto()
 
     class FunctionParameter:
-        __slots__ = ("_idx", "_paramType", "_value", "_ptrIndex", "_name")
+        __slots__ = ("_idx", "_paramType", "_value", "_ptrIndex", "_offset", "_name")
         _idx : int
         _paramType : "FunctionCall.FunctionParameterType"
         _value : int
         _ptrIndex : int
+        _offset : int
         _name : str
 
         def __init__(self, parameterDict : Dict):
@@ -332,6 +341,7 @@ class FunctionCall:
                 self._value = parameterDict["value"]
             elif self._paramType == FunctionCall.FunctionParameterType.PTR:
                 self._ptrIndex = parameterDict["ptrIndex"]
+                self._offset = parameterDict["offset"]
             elif self._paramType == FunctionCall.FunctionParameterType.FUNC:
                 self._name = parameterDict["name"]
 
@@ -350,6 +360,10 @@ class FunctionCall:
         @property
         def ptrIndex(self) -> int:
             return self._ptrIndex
+
+        @property
+        def offset(self) -> int:
+            return self._offset
 
         @property
         def name(self) -> str:
@@ -397,6 +411,7 @@ if __name__ == "__main__":
     skeleton = skeleton.replace("// @@ DRIVER COMPILE COMMAND @@", f"$LLVM_DIR/build_release/bin/clang++ {GlobalConfig.DRIVER_COMPILE_FLAGS} -o {GlobalConfig.EXE_FILE} {GlobalConfig.CC_FILE} {GlobalConfig.FLAGS}")
     skeleton = skeleton.replace("// @@ MIN SIZE @@", f"{GlobalConfig.MAX_SIZE}").replace("// @@ MAX SIZE @@", f"{GlobalConfig.MAX_SIZE}")
     skeleton = skeleton.replace("// @@ PRE OPERATIONS @@", f"{GlobalConfig.PRE_OPERATIONS}")
+    skeleton = skeleton.replace("// @@ OPAQUE TYPES @@", f"{GlobalConfig.OPAQUE_TYPES}")
     skeleton = skeleton.replace("/* @@ GRAPH NODE COUNT @@ */", f"{len(ous['nodes'])}")
     skeleton = skeleton.replace("/* @@ POINTER COUNT @@ */", f"{ous['pointerIdxCount']}")
 
@@ -404,8 +419,8 @@ if __name__ == "__main__":
     graphEdges : List[str] = []
     graphNodes : List[str] = []
 
-    def addPtrLoadInDriver(loadPair : Tuple[int, int]):
-        return f"    __TDD_load_ptr[{loadPair[1]}] = {loadPair[0]};"
+    def addPtrLoadInDriver(loadPair : Tuple[Tuple[int, int], int]):
+        return f"    __TDD_load_ptr[{loadPair[1]}] = {{{loadPair[0][0]}, {loadPair[0][1]}}};"
     for loadPair in ous["loadPtrs"]:
         ptrLoads.append(addPtrLoadInDriver(loadPair))
     ptrLoadsStr = "\n".join(ptrLoads)
@@ -425,48 +440,48 @@ if __name__ == "__main__":
     def addArgument(argument : FunctionCall.FunctionParameter, parameterType : str):
         global commands, tempVarIdx, lastPointerIndex
         if parameterType == "FILE*":
-            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>(__TDD_driver_FILEptr());")
+            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) (__TDD_driver_FILEptr());")
             args.append(tempVarIdx)
             tempVarIdx += 1
         elif parameterType == "std::string":
-            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>(__TDD_driver_std_string());")
+            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) (__TDD_driver_std_string());")
             args.append(tempVarIdx)
             tempVarIdx += 1
         elif argument.paramType == FunctionCall.FunctionParameterType.CONST:
             if GlobalConfig.NO_CONST_INT:
-                commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>(__TDD_driver_get_typed_value<{parameterType}>());")
+                commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) (__TDD_driver_get_typed_value<{parameterType}>());")
             else:
-                commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>({argument.value});")
+                commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) ({argument.value});")
             args.append(tempVarIdx)
             tempVarIdx += 1
         elif argument.paramType == FunctionCall.FunctionParameterType.FILE_PATH:
-            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>(__TDD_driver_file_name());")
+            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) (__TDD_driver_file_name());")
             args.append(tempVarIdx)
             tempVarIdx += 1
         elif argument.paramType == FunctionCall.FunctionParameterType.FUNC:
-            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>({argument.name});")
+            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) ({argument.name});")
             args.append(tempVarIdx)
             tempVarIdx += 1
         elif argument.paramType == FunctionCall.FunctionParameterType.NULL:
-            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>(nullptr);")
+            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) (nullptr);")
             args.append(tempVarIdx)
             tempVarIdx += 1
         elif argument.paramType == FunctionCall.FunctionParameterType.PTR:
             commands.append(f"if (!__TDD_driver_get_ptr<{parameterType}>({argument.ptrIndex})) return false;");
-            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>(__TDD_driver_get_typed_object<{parameterType}>({argument.ptrIndex}));")
+            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) (__TDD_driver_get_typed_object<{parameterType}>({argument.ptrIndex}, {argument.offset}));")
             args.append(tempVarIdx)
             tempVarIdx += 1
             lastPointerIndex = argument.ptrIndex
         elif argument.paramType == FunctionCall.FunctionParameterType.PTR_SIZE:
             assert lastPointerIndex != -1
-            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>(__TDD_ptr_size.at({lastPointerIndex}));")
+            commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) (__TDD_ptr_size.at({lastPointerIndex}));")
             args.append(tempVarIdx)
             tempVarIdx += 1
         else:
             assert False, f"Unknown parameter type : {argument.paramType}"
     def addValueArgument(parameterType : str):
         global commands, tempVarIdx, lastPointerIndex
-        commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = static_cast<{parameterType}>(__TDD_driver_get_typed_value<{parameterType}>());")
+        commands.append(f"{parameterType} __TDD_tempVar_{tempVarIdx} = ({parameterType}) (__TDD_driver_get_typed_value<{parameterType}>());")
         args.append(tempVarIdx)
         tempVarIdx += 1
     def generateArguments(functionCall : FunctionCall, functionDecl : FunctionDecl, skipFirst : bool):
@@ -498,21 +513,21 @@ if __name__ == "__main__":
             if functionCall.returnIdx == -1:
                 commands.append(f"{functionCall._name}{getArgList()};")
             else:
-                commands.append(f"{functionDecl.returnType} __TDD_tempVar_{tempVarIdx} = {functionCall._name}{getArgList()};")
+                commands.append(f"{functionDecl.returnType} __TDD_tempVar_{tempVarIdx} = ({functionDecl.returnType}) {functionCall._name}{getArgList()};")
                 tempVarIdx += 1
         elif functionDecl.functionType == FunctionDecl.FunctionDeclType.CXX_METHOD:
             commands.append(f"if (!__TDD_driver_get_ptr<{functionDecl.base}*>({functionCall.parameters[0].ptrIndex})) return false;")
-            commands.append(f"{functionDecl.base}* __TDD_tempVar_{tempVarIdx} = static_cast<{functionDecl.base}*>(__TDD_driver_get_typed_object<{functionDecl.base}*>({functionCall.parameters[0].ptrIndex}));")
+            commands.append(f"{functionDecl.base}* __TDD_tempVar_{tempVarIdx} = ({functionDecl.base}*) (__TDD_driver_get_typed_object<{functionDecl.base}*>({functionCall.parameters[0].ptrIndex}, {functionCall.parameters[0].offset}));")
             if functionCall.returnIdx == -1:
                 commands.append(f"__TDD_tempVar_{tempVarIdx}->{functionCall._name}{getArgList()};")
             else:
-                commands.append(f"{functionDecl.returnType} __TDD_tempVar_{tempVarIdx} = __TDD_tempVar_{tempVarIdx}->{functionCall._name}{getArgList()};")
+                commands.append(f"{functionDecl.returnType} __TDD_tempVar_{tempVarIdx} = ({functionDecl.returnType}) __TDD_tempVar_{tempVarIdx}->{functionCall._name}{getArgList()};")
                 tempVarIdx += 1
             tempVarIdx += 1
         elif functionDecl.functionType == FunctionDecl.FunctionDeclType.CXX_CONSTRUCTOR:
             assert functionCall.returnIdx == -1
             commands.append(f"if (!__TDD_driver_get_ptr<{functionDecl.base}*>({functionCall.parameters[0].ptrIndex})) return false;")
-            commands.append(f"{functionDecl.base}* __TDD_tempVar_{tempVarIdx} = static_cast<{functionDecl.base}*>(__TDD_driver_get_typed_object<{functionDecl.base}*>({functionCall.parameters[0].ptrIndex}));")
+            commands.append(f"{functionDecl.base}* __TDD_tempVar_{tempVarIdx} = ({functionDecl.base}*) (__TDD_driver_get_typed_object<{functionDecl.base}*>({functionCall.parameters[0].ptrIndex}, {functionCall.parameters[0].offset}));")
             commands.append(f"new (__TDD_tempVar_{tempVarIdx}) {functionDecl.base}{getArgList()};")
             tempVarIdx += 1
         else:

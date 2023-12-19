@@ -56,6 +56,7 @@ struct FunctionParameter {
     int64_t intValue;
     bool isPreviousSize;
     const void* ptrValue;
+    int64_t offset;
     uint64_t ptrIdx;
     std::string funcValue;
     static FunctionParameter getInt (int64_t idx, int64_t value) {
@@ -66,13 +67,14 @@ struct FunctionParameter {
         ret.isPreviousSize = false;
         if (!functionParameters.empty() && functionParameters.back().idx == idx - 1 && functionParameters.back().type == FunctionParameterType::PTR) {
             const void* previousPtr = functionParameters.back().ptrValue;
-            if (buffers.count(previousPtr) && buffers[previousPtr].first == value) {
+            int64_t previousOffset = functionParameters.back().offset;
+            if (buffers.count(previousPtr) && buffers[previousPtr].first - previousOffset == value) {
                 ret.isPreviousSize = true;
             }
         }
         return ret;
     }
-    static FunctionParameter getPtr (uint64_t idx, const void* value) {
+    static FunctionParameter getPtr (uint64_t idx, const void* value, int64_t offset) {
         FunctionParameter ret;
         ret.idx = idx;
         ret.type = FunctionParameterType::PTR;
@@ -80,6 +82,7 @@ struct FunctionParameter {
         if (!buffers.count(value)) {
             buffers[value] = {0, bufferIdx++};
         }
+        ret.offset = offset;
         ret.ptrIdx = buffers.at(value).second;
         return ret;
     }
@@ -246,10 +249,10 @@ void exit (int code) {
 /*
 llvm::FunctionCallee
     TDD_traceAlloca        = M.getOrInsertFunction("TDD_traceAlloca",        builder.getVoidTy(), builder.getPtrTy(), builder.getInt64Ty()),
-    TDD_traceLoad          = M.getOrInsertFunction("TDD_traceLoad",          builder.getVoidTy(), builder.getPtrTy()),
+    TDD_traceLoad          = M.getOrInsertFunction("TDD_traceLoad",          builder.getVoidTy(), builder.getPtrTy(), builder.getInt64Ty(), builder.getPtrTy()),
     TDD_traceCallPre       = M.getOrInsertFunction("TDD_traceCallPre",       builder.getVoidTy(), builder.getPtrTy()),
     TDD_traceIntParameter  = M.getOrInsertFunction("TDD_traceIntParameter",  builder.getVoidTy(), builder.getInt64Ty(), builder.getInt64Ty()),
-    TDD_tracePtrParameter  = M.getOrInsertFunction("TDD_tracePtrParameter",  builder.getVoidTy(), builder.getInt64Ty(), builder.getPtrTy()),
+    TDD_tracePtrParameter  = M.getOrInsertFunction("TDD_tracePtrParameter",  builder.getVoidTy(), builder.getInt64Ty(), builder.getPtrTy(), builder.getInt64Ty()),
     TDD_traceFuncParameter = M.getOrInsertFunction("TDD_traceFuncParameter", builder.getVoidTy(), builder.getPtrTy()),s
     TDD_traceReturnValue   = M.getOrInsertFunction("TDD_traceReturnValue",   builder.getVoidTy(), builder.getPtrTy()),
     TDD_traceCallPost      = M.getOrInsertFunction("TDD_traceCallPost",      builder.getVoidTy(), builder.getPtrTy()),
@@ -269,10 +272,10 @@ void TDD_traceAlloca (const void* ptr, uint64_t size) {
     }
 }
 
-void TDD_traceLoad (const void* address, const void* value) {
+void TDD_traceLoad (const void* address, int64_t offset, const void* value) {
     if (ifTrack && buffers.count(address) && !buffers.count(value)) {
         ifTrack = false;
-        allTraces.push_back({{{"type", "LOAD"}, {"address", buffers[address].second}, {"value", bufferIdx}}, false});
+        allTraces.push_back({{{"type", "LOAD"}, {"address", buffers[address].second}, {"offset", offset}, {"value", bufferIdx}}, false});
         buffers[value] = {0, bufferIdx++};
         ifTrack = true;
     }
@@ -286,10 +289,10 @@ void TDD_traceIntParameter (uint64_t parameterIndex, int64_t value) {
     }
 }
 
-void TDD_tracePtrParameter (uint64_t parameterIndex, const void* value) {
+void TDD_tracePtrParameter (uint64_t parameterIndex, const void* value, int64_t offset) {
     if (ifTrack) {
         ifTrack = false;
-        functionParameters.push_back(FunctionParameter::getPtr(parameterIndex, value));
+        functionParameters.push_back(FunctionParameter::getPtr(parameterIndex, value, offset));
         ifTrack = true;
     }
 }
@@ -356,6 +359,7 @@ void TDD_traceCallPost (const char* demangledFunctionName) {
                     thisResult["idx"] = thisParameter.idx;
                     thisResult["paramType"] = "PTR";
                     thisResult["ptrIndex"] = thisParameter.ptrIdx;
+                    thisResult["offset"] = thisParameter.offset;
                     parameterResult.emplace_back(thisResult);
                 }
             } else if (thisParameter.type == FunctionParameter::FunctionParameterType::FUNC) {
